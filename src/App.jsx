@@ -258,7 +258,7 @@ function App() {
       {/* 倍速 */}
       <div style={{ marginTop: 12 }}>
         <strong>Speed:</strong>{" "}
-        {[0.75, 1, 1.25, 1.5].map((r) => (
+        {[0.5, 0.75, 1, 1.25, 1.5].map((r) => (
           <button key={r} onClick={() => setPlaybackRate(r)} style={{ marginRight: 6 }}>
             {r}x
           </button>
