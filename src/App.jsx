@@ -24,12 +24,7 @@ function App() {
   const parseTime = (t) => {
     const [h, m, rest] = t.split(":");
     const [s, ms] = rest.split(/[,\.]/);
-    return (
-      Number(h) * 3600 +
-      Number(m) * 60 +
-      Number(s) +
-      Number(ms) / 1000
-    );
+    return Number(h) * 3600 + Number(m) * 60 + Number(s) + Number(ms) / 1000;
   };
 
   /* ===== 字幕解析 ===== */
@@ -85,7 +80,7 @@ function App() {
         return;
       }
 
-      // 否则：字幕一句循环
+      // 字幕一句循环
       const idx = subtitles.findIndex(
         (s) => video.currentTime >= s.start && video.currentTime < s.end
       );
@@ -116,25 +111,40 @@ function App() {
       if (!videoRef.current) return;
       if (e.target.tagName === "INPUT") return;
 
+      const video = videoRef.current;
+
+      // Space 播放暂停
       if (e.code === "Space") {
         e.preventDefault();
-        videoRef.current.paused
-          ? videoRef.current.play()
-          : videoRef.current.pause();
+        video.paused ? video.play() : video.pause();
       }
 
+      // ↓ 下一句
       if (e.code === "ArrowDown" && currentIndex !== null) {
         e.preventDefault();
         const next = Math.min(currentIndex + 1, subtitles.length - 1);
-        videoRef.current.currentTime = subtitles[next].start;
-        videoRef.current.play();
+        video.currentTime = subtitles[next].start;
+        video.play();
       }
 
+      // ↑ 上一句
       if (e.code === "ArrowUp" && currentIndex !== null) {
         e.preventDefault();
         const prev = Math.max(currentIndex - 1, 0);
-        videoRef.current.currentTime = subtitles[prev].start;
-        videoRef.current.play();
+        video.currentTime = subtitles[prev].start;
+        video.play();
+      }
+
+      // → 快进3秒
+      if (e.code === "ArrowRight") {
+        e.preventDefault();
+        video.currentTime = Math.min(video.currentTime + 3, video.duration);
+      }
+
+      // ← 后退3秒
+      if (e.code === "ArrowLeft") {
+        e.preventDefault();
+        video.currentTime = Math.max(video.currentTime - 3, 0);
       }
     };
 
@@ -175,7 +185,9 @@ function App() {
           <div style={{ marginTop: 6, padding: 8, fontSize: 12, background: "#f7f7f7", border: "1px solid #ccc" }}>
             Space — Play / Pause<br />
             ↑ — Previous sentence<br />
-            ↓ — Next sentence
+            ↓ — Next sentence<br />
+            ← — Back 3s<br />
+            → — Forward 3s
           </div>
         )}
       </div>
@@ -207,7 +219,7 @@ function App() {
               id={`line-${i}`}
               key={i}
               onClick={() => {
-                setAbLoopEnabled(false); // 点字幕时关闭 A–B
+                setAbLoopEnabled(false);
                 videoRef.current.currentTime = s.start;
                 videoRef.current.play();
                 setCurrentIndex(i);
@@ -224,7 +236,7 @@ function App() {
         </div>
       </div>
 
-      {/* A–B Loop 控制 */}
+      {/* A–B Loop */}
       <div style={{ marginTop: 12 }}>
         <strong>A–B Loop:</strong><br />
         <button onClick={() => setPointA(videoRef.current.currentTime)}>Set A</button>
