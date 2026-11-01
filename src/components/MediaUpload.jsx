@@ -42,7 +42,7 @@ export default function MediaUpload({
           onChange={onMediaUpload}
         />
         <p className={styles.hint}>
-          支持格式：{MEDIA_EXTENSIONS.join("、")}
+          支持格式：{MEDIA_EXTENSIONS.join("、")}（建议优先用 .mp4，兼容性更好）
         </p>
       </div>
 

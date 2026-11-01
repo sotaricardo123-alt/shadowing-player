@@ -12,6 +12,13 @@ describe("validateMediaFile", () => {
     expect(validateMediaFile(file).ok).toBe(true);
   });
 
+  it("accepts .mov by extension or quicktime mime", () => {
+    expect(validateMediaFile({ name: "clip.mov", type: "" }).ok).toBe(true);
+    expect(
+      validateMediaFile({ name: "clip.bin", type: "video/quicktime" }).ok
+    ).toBe(true);
+  });
+
   it("rejects unknown formats", () => {
     const file = { name: "doc.pdf", type: "application/pdf" };
     expect(validateMediaFile(file).ok).toBe(false);

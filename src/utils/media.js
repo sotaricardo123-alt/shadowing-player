@@ -1,8 +1,16 @@
-export const MEDIA_EXTENSIONS = [".mp4", ".webm", ".mp3", ".wav", ".m4a", ".ogg"];
+export const MEDIA_EXTENSIONS = [
+  ".mp4",
+  ".webm",
+  ".mov",
+  ".mp3",
+  ".wav",
+  ".m4a",
+  ".ogg",
+];
 export const SUBTITLE_EXTENSIONS = [".srt", ".vtt"];
 
 export const MEDIA_ACCEPT =
-  "video/mp4,video/webm,audio/mp3,audio/wav,audio/mpeg,audio/mp4,audio/ogg";
+  "video/mp4,video/webm,video/quicktime,audio/mp3,audio/wav,audio/mpeg,audio/mp4,audio/ogg";
 
 function getExtension(filename) {
   const dot = filename.lastIndexOf(".");
