@@ -1,0 +1,21 @@
+.section {
+  margin-top: 20px;
+}
+
+.recordingActions {
+  margin-top: 8px;
+}
+
+.stopBtn {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.audio {
+  margin-top: 10px;
+}
+
+.audio audio {
+  width: 100%;
+  max-width: 400px;
+}

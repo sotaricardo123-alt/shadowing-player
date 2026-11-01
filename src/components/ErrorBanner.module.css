@@ -1,0 +1,28 @@
+.banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-error-border);
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+  font-size: 0.875em;
+}
+
+.dismiss {
+  flex-shrink: 0;
+  padding: 0 0.5em;
+  font-size: 1.1em;
+  line-height: 1;
+  border: none;
+  background: transparent;
+  color: inherit;
+}
+
+.dismiss:hover {
+  background: rgba(185, 28, 28, 0.08);
+  border-color: transparent;
+}

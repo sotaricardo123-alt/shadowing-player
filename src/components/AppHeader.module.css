@@ -1,0 +1,72 @@
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 10px 14px;
+  padding-top: max(10px, env(safe-area-inset-top));
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  min-height: 48px;
+}
+
+.title {
+  flex: 1;
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.iconBtn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 1rem;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.iconBtn:disabled {
+  opacity: 0.3;
+}
+
+.uploadBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-primary-border);
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.uploadIcon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.uploadBtn:hover {
+  background: var(--color-active);
+  border-color: var(--color-primary);
+  color: var(--color-primary-hover);
+}

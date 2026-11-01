@@ -1,281 +1,351 @@
 import { useEffect, useRef, useState } from "react";
+import { validateMediaFile, validateSubtitleFile } from "./utils/media";
+import { parseSubtitle } from "./utils/subtitle";
+import { usePlaybackRate } from "./hooks/usePlaybackRate";
+import { useSubtitleLoop } from "./hooks/useSubtitleLoop";
+import { useAutoScroll } from "./hooks/useAutoScroll";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+import { useMediaRecorder } from "./hooks/useMediaRecorder";
+import { useVideoProgress } from "./hooks/useVideoProgress";
+import AppHeader from "./components/AppHeader";
+import MediaUpload from "./components/MediaUpload";
+import UploadSheet from "./components/UploadSheet";
+import VideoPlayer from "./components/VideoPlayer";
+import SubtitlePanel from "./components/SubtitlePanel";
+import PlayerToolbar from "./components/PlayerToolbar";
+import PlaybackControls from "./components/PlaybackControls";
+import ABLoopBar from "./components/ABLoopBar";
+import styles from "./App.module.css";
 
 function App() {
   const videoRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
+  const mediaUrlRef = useRef(null);
 
   const [mediaSrc, setMediaSrc] = useState(null);
+  const [mediaFileName, setMediaFileName] = useState(null);
+  const [subtitleFileName, setSubtitleFileName] = useState(null);
+  const [lessonTitle, setLessonTitle] = useState("跟读练习");
   const [subtitles, setSubtitles] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(null);
   const [playbackRate, setPlaybackRate] = useState(1);
 
-  // A–B Loop
   const [pointA, setPointA] = useState(null);
   const [pointB, setPointB] = useState(null);
   const [abLoopEnabled, setAbLoopEnabled] = useState(false);
+  const [abModeActive, setAbModeActive] = useState(false);
+  const [sentenceLoopEnabled, setSentenceLoopEnabled] = useState(false);
 
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordedAudio, setRecordedAudio] = useState(null);
+  const [showUpload, setShowUpload] = useState(true);
+  const [subtitlesHidden, setSubtitlesHidden] = useState(false);
+  const [bilingualMode, setBilingualMode] = useState("both");
 
-  const [showHelp, setShowHelp] = useState(false);
+  const [mediaError, setMediaError] = useState(null);
+  const [subtitleError, setSubtitleError] = useState(null);
 
-  /* ===== 时间解析 ===== */
-  const parseTime = (t) => {
-    const [h, m, rest] = t.split(":");
-    const [s, ms] = rest.split(/[,\.]/);
-    return Number(h) * 3600 + Number(m) * 60 + Number(s) + Number(ms) / 1000;
-  };
+  const {
+    isRecording,
+    recordedAudio,
+    recordingError,
+    startRecording,
+    stopRecording,
+    clearRecordingError,
+  } = useMediaRecorder();
 
-  /* ===== 字幕解析 ===== */
-  const parseSubtitle = (text) =>
-    text
-      .replace(/\r/g, "")
-      .split(/\n\n+/)
-      .map((block) => {
-        const lines = block.split("\n");
-        const timeLine = lines.find((l) => l.includes("-->"));
-        if (!timeLine) return null;
+  const { currentTime, duration, isPlaying, seek, togglePlay } =
+    useVideoProgress(videoRef, mediaSrc);
 
-        const [start, end] = timeLine.split(" --> ");
-        return {
-          start: parseTime(start.trim()),
-          end: parseTime(end.trim()),
-          text: lines.slice(lines.indexOf(timeLine) + 1).join(" "),
-        };
-      })
-      .filter(Boolean);
+  const hasBilingual = subtitles.some((s) => s.translation);
 
-  /* ===== 上传 ===== */
+  useEffect(() => {
+    return () => {
+      if (mediaUrlRef.current) URL.revokeObjectURL(mediaUrlRef.current);
+    };
+  }, []);
+
   const handleMediaUpload = (e) => {
     const file = e.target.files[0];
-    if (file) setMediaSrc(URL.createObjectURL(file));
+    setMediaError(null);
+
+    const validation = validateMediaFile(file);
+    if (!validation.ok) {
+      setMediaError(validation.message);
+      e.target.value = "";
+      return;
+    }
+
+    if (mediaUrlRef.current) URL.revokeObjectURL(mediaUrlRef.current);
+    const url = URL.createObjectURL(file);
+    mediaUrlRef.current = url;
+    setMediaSrc(url);
+    setMediaFileName(file.name);
+    setLessonTitle(file.name.replace(/\.[^.]+$/, ""));
+    setShowUpload(false);
+    e.target.value = "";
   };
 
   const handleSubtitleUpload = (e) => {
     const file = e.target.files[0];
-    if (!file) return;
+    setSubtitleError(null);
+
+    const validation = validateSubtitleFile(file);
+    if (!validation.ok) {
+      setSubtitleError(validation.message);
+      e.target.value = "";
+      return;
+    }
+
     const reader = new FileReader();
-    reader.onload = () => setSubtitles(parseSubtitle(reader.result));
+    reader.onload = () => {
+      try {
+        const cues = parseSubtitle(reader.result, file.name);
+        setSubtitles(cues);
+        setSubtitleFileName(file.name);
+        setCurrentIndex(null);
+        e.target.value = "";
+      } catch (err) {
+        setSubtitleError(err.message || "Failed to parse subtitle file.");
+        setSubtitles([]);
+      }
+    };
+    reader.onerror = () => {
+      setSubtitleError("Failed to read subtitle file.");
+    };
     reader.readAsText(file);
   };
 
-  /* ===== 倍速 ===== */
-  useEffect(() => {
-    if (videoRef.current) videoRef.current.playbackRate = playbackRate;
-  }, [playbackRate]);
-
-  /* ===== 播放 & 循环逻辑 ===== */
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    const onTimeUpdate = () => {
-      // A–B Loop 优先
-      if (abLoopEnabled && pointA !== null && pointB !== null) {
-        if (video.currentTime >= pointB) {
-          video.currentTime = pointA;
-          video.play();
-        }
-        return;
-      }
-
-      // 字幕一句循环
-      const idx = subtitles.findIndex(
-        (s) => video.currentTime >= s.start && video.currentTime < s.end
-      );
-
-      if (idx !== currentIndex) setCurrentIndex(idx);
-
-      if (idx !== -1 && video.currentTime >= subtitles[idx].end) {
-        video.currentTime = subtitles[idx].start;
-        video.play();
-      }
-    };
-
-    video.addEventListener("timeupdate", onTimeUpdate);
-    return () => video.removeEventListener("timeupdate", onTimeUpdate);
-  }, [subtitles, currentIndex, abLoopEnabled, pointA, pointB]);
-
-  /* ===== 自动滚动 ===== */
-  useEffect(() => {
-    if (currentIndex === null) return;
-    document
-      .getElementById(`line-${currentIndex}`)
-      ?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [currentIndex]);
-
-  /* ===== 快捷键 ===== */
-  useEffect(() => {
-    const onKeyDown = (e) => {
-      if (!videoRef.current) return;
-      if (e.target.tagName === "INPUT") return;
-
-      const video = videoRef.current;
-
-      // Space 播放暂停
-      if (e.code === "Space") {
-        e.preventDefault();
-        video.paused ? video.play() : video.pause();
-      }
-
-      // ↓ 下一句
-      if (e.code === "ArrowDown" && currentIndex !== null) {
-        e.preventDefault();
-        const next = Math.min(currentIndex + 1, subtitles.length - 1);
-        video.currentTime = subtitles[next].start;
-        video.play();
-      }
-
-      // ↑ 上一句
-      if (e.code === "ArrowUp" && currentIndex !== null) {
-        e.preventDefault();
-        const prev = Math.max(currentIndex - 1, 0);
-        video.currentTime = subtitles[prev].start;
-        video.play();
-      }
-
-      // → 快进3秒
-      if (e.code === "ArrowRight") {
-        e.preventDefault();
-        video.currentTime = Math.min(video.currentTime + 3, video.duration);
-      }
-
-      // ← 后退3秒
-      if (e.code === "ArrowLeft") {
-        e.preventDefault();
-        video.currentTime = Math.max(video.currentTime - 3, 0);
-      }
-    };
-
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [currentIndex, subtitles]);
-
-  /* ===== 录音 ===== */
-  const startRecording = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const recorder = new MediaRecorder(stream);
-
-    audioChunksRef.current = [];
-    recorder.ondataavailable = (e) => audioChunksRef.current.push(e.data);
-    recorder.onstop = () => {
-      const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-      setRecordedAudio(URL.createObjectURL(blob));
-    };
-
-    recorder.start();
-    mediaRecorderRef.current = recorder;
-    setIsRecording(true);
+  const handleSubtitleLineClick = (index) => {
+    setAbLoopEnabled(false);
+    setCurrentIndex(index);
   };
 
-  const stopRecording = () => {
-    mediaRecorderRef.current.stop();
-    setIsRecording(false);
+  const goToSentence = (index) => {
+    if (index < 0 || index >= subtitles.length) return;
+    setAbLoopEnabled(false);
+    setCurrentIndex(index);
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = subtitles[index].start;
+    video.play();
+  };
+
+  const handleToggleRecording = () => {
+    if (isRecording) stopRecording();
+    else startRecording();
+  };
+
+  const handleToggleSentenceLoop = () => {
+    setSentenceLoopEnabled((enabled) => {
+      const next = !enabled;
+      if (!next) return next;
+
+      const video = videoRef.current;
+      if (!video || subtitles.length === 0) return next;
+
+      // Prefer the highlighted card; only fall back to playhead / first cue.
+      let targetIdx = currentIndex;
+      if (targetIdx === null) {
+        targetIdx = subtitles.findIndex(
+          (s) => video.currentTime >= s.start && video.currentTime < s.end
+        );
+        if (targetIdx === -1) targetIdx = 0;
+        setCurrentIndex(targetIdx);
+      }
+
+      setAbLoopEnabled(false);
+      video.currentTime = subtitles[targetIdx].start;
+      video.play();
+      return next;
+    });
+  };
+
+  const handleToggleAbMode = () => {
+    setAbModeActive((active) => {
+      if (active) {
+        setAbLoopEnabled(false);
+        return false;
+      }
+      return true;
+    });
+  };
+
+  const handleCloseAbMode = () => {
+    setAbModeActive(false);
+    setAbLoopEnabled(false);
+  };
+
+  const resetPlaybackState = () => {
+    setCurrentIndex(null);
+    setPointA(null);
+    setPointB(null);
+    setAbLoopEnabled(false);
+    setAbModeActive(false);
+    setSentenceLoopEnabled(false);
+    setSubtitlesHidden(false);
+  };
+
+  const handleRemoveMedia = () => {
+    videoRef.current?.pause();
+    if (mediaUrlRef.current) {
+      URL.revokeObjectURL(mediaUrlRef.current);
+      mediaUrlRef.current = null;
+    }
+    setMediaSrc(null);
+    setMediaFileName(null);
+    setSubtitles([]);
+    setSubtitleFileName(null);
+    setLessonTitle("跟读练习");
+    setMediaError(null);
+    setSubtitleError(null);
+    resetPlaybackState();
+    setShowUpload(true);
+  };
+
+  const handleRemoveSubtitles = () => {
+    setSubtitles([]);
+    setSubtitleFileName(null);
+    setSubtitleError(null);
+    setCurrentIndex(null);
+  };
+
+  usePlaybackRate(videoRef, playbackRate);
+  useSubtitleLoop({
+    videoRef,
+    subtitles,
+    currentIndex,
+    setCurrentIndex,
+    abLoopEnabled,
+    pointA,
+    pointB,
+    sentenceLoopEnabled,
+  });
+  useAutoScroll(currentIndex);
+  useKeyboardShortcuts({ videoRef, currentIndex, subtitles });
+
+  const hasMedia = Boolean(mediaSrc);
+  const hasSubtitles = subtitles.length > 0;
+  const canNavigate = hasSubtitles && currentIndex !== null;
+
+  const handleSeekBy = (delta) => {
+    const video = videoRef.current;
+    if (!video) return;
+    seek(video.currentTime + delta);
   };
 
   return (
-    <div style={{ padding: 20, fontFamily: "sans-serif", position: "relative" }}>
-      <h2>Shadowing Practice Player</h2>
+    <div className={styles.shell}>
+      <div className={styles.phone}>
+        {hasMedia ? (
+          <>
+            <AppHeader
+              title={lessonTitle}
+              onOpenUpload={() => setShowUpload(true)}
+            />
 
-      {/* 快捷键说明 */}
-      <div style={{ position: "absolute", top: 16, right: 16 }}>
-        <button onClick={() => setShowHelp(!showHelp)}>⌨️ Shortcuts</button>
-        {showHelp && (
-          <div style={{ marginTop: 6, padding: 8, fontSize: 12, background: "#f7f7f7", border: "1px solid #ccc" }}>
-            Space — Play / Pause<br />
-            ↑ — Previous sentence<br />
-            ↓ — Next sentence<br />
-            ← — Back 3s<br />
-            → — Forward 3s
+            <main className={styles.main}>
+              <div className={styles.contentRow}>
+                <div className={styles.videoSection}>
+                  <VideoPlayer videoRef={videoRef} mediaSrc={mediaSrc} />
+                </div>
+                <div className={styles.subtitleSection}>
+                  <SubtitlePanel
+                    subtitles={subtitles}
+                    currentIndex={currentIndex}
+                    videoRef={videoRef}
+                    onLineClick={handleSubtitleLineClick}
+                    hidden={subtitlesHidden}
+                    bilingualMode={bilingualMode}
+                  />
+                </div>
+              </div>
+            </main>
+
+            <footer className={styles.footer}>
+              <ABLoopBar
+                active={abModeActive}
+                videoRef={videoRef}
+                pointA={pointA}
+                pointB={pointB}
+                abLoopEnabled={abLoopEnabled}
+                onSetA={setPointA}
+                onSetB={setPointB}
+                onToggleLoop={() => setAbLoopEnabled((v) => !v)}
+                onClose={handleCloseAbMode}
+              />
+              <PlayerToolbar
+                playbackRate={playbackRate}
+                onSpeedChange={setPlaybackRate}
+                abModeActive={abModeActive}
+                onToggleAbMode={handleToggleAbMode}
+                sentenceLoopEnabled={sentenceLoopEnabled}
+                onToggleSentenceLoop={handleToggleSentenceLoop}
+                isRecording={isRecording}
+                onToggleRecording={handleToggleRecording}
+                recordedAudio={recordedAudio}
+                hasBilingual={hasBilingual}
+                bilingualMode={bilingualMode}
+                onBilingualModeChange={setBilingualMode}
+              />
+              <PlaybackControls
+                currentTime={currentTime}
+                duration={duration}
+                isPlaying={isPlaying}
+                onSeek={seek}
+                onTogglePlay={togglePlay}
+                onSeekBy={handleSeekBy}
+                hasSubtitles={hasSubtitles}
+                onPrevSentence={() =>
+                  goToSentence(Math.max((currentIndex ?? 0) - 1, 0))
+                }
+                onNextSentence={() =>
+                  goToSentence(
+                    Math.min((currentIndex ?? 0) + 1, subtitles.length - 1)
+                  )
+                }
+                subtitlesHidden={subtitlesHidden}
+                onToggleSubtitlesHidden={() =>
+                  setSubtitlesHidden((v) => !v)
+                }
+                canNavigate={canNavigate}
+              />
+            </footer>
+          </>
+        ) : (
+          <div className={styles.landing}>
+            <div className={styles.landingCard}>
+              <h2 className={styles.landingTitle}>Shadowing Player</h2>
+              <p className={styles.landingDesc}>
+                上传视频和字幕，逐句跟读练习
+              </p>
+              <MediaUpload
+                onMediaUpload={handleMediaUpload}
+                onSubtitleUpload={handleSubtitleUpload}
+                mediaError={mediaError}
+                subtitleError={subtitleError}
+                onDismissMediaError={() => setMediaError(null)}
+                onDismissSubtitleError={() => setSubtitleError(null)}
+              />
+            </div>
           </div>
         )}
-      </div>
 
-      {/* 上传 */}
-      <div style={{ marginBottom: 16 }}>
-        🎬 <strong>Upload Media</strong><br />
-        <input type="file" accept="video/mp4,video/webm,audio/mp3,audio/wav" onChange={handleMediaUpload} />
-        <br /><br />
-        📝 <strong>Upload Subtitles</strong><br />
-        <input type="file" accept=".srt,.vtt" onChange={handleSubtitleUpload} />
-      </div>
+        <UploadSheet
+          open={showUpload && hasMedia}
+          onClose={() => setShowUpload(false)}
+          onMediaUpload={handleMediaUpload}
+          onSubtitleUpload={handleSubtitleUpload}
+          mediaError={mediaError}
+          subtitleError={subtitleError}
+          onDismissMediaError={() => setMediaError(null)}
+          onDismissSubtitleError={() => setSubtitleError(null)}
+          mediaFileName={mediaFileName}
+          subtitleFileName={subtitleFileName}
+          onRemoveMedia={handleRemoveMedia}
+          onRemoveSubtitles={handleRemoveSubtitles}
+        />
 
-      <div style={{ display: "flex", gap: 16 }}>
-        <div style={{ width: 720, aspectRatio: "16 / 9", background: "#000" }}>
-          {mediaSrc && (
-            <video
-              ref={videoRef}
-              src={mediaSrc}
-              controls
-              style={{ width: "100%", height: "100%", objectFit: "contain" }}
-            />
-          )}
-        </div>
-
-        <div style={{ width: 320, maxHeight: 405, overflowY: "auto", border: "1px solid #ddd", padding: 8 }}>
-          {subtitles.map((s, i) => (
-            <div
-              id={`line-${i}`}
-              key={i}
-              onClick={() => {
-                setAbLoopEnabled(false);
-                videoRef.current.currentTime = s.start;
-                videoRef.current.play();
-                setCurrentIndex(i);
-              }}
-              style={{
-                padding: 6,
-                cursor: "pointer",
-                background: i === currentIndex ? "#cceeff" : "transparent",
-              }}
-            >
-              {s.text}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* A–B Loop */}
-      <div style={{ marginTop: 12 }}>
-        <strong>A–B Loop:</strong><br />
-        <button onClick={() => setPointA(videoRef.current.currentTime)}>Set A</button>
-        <button onClick={() => setPointB(videoRef.current.currentTime)} style={{ marginLeft: 6 }}>
-          Set B
-        </button>
-        <button
-          onClick={() => setAbLoopEnabled(!abLoopEnabled)}
-          disabled={pointA === null || pointB === null}
-          style={{ marginLeft: 6 }}
-        >
-          {abLoopEnabled ? "Stop Loop" : "Start Loop"}
-        </button>
-        <div style={{ fontSize: 12, color: "#555", marginTop: 4 }}>
-          A: {pointA?.toFixed(2) ?? "--"}s | B: {pointB?.toFixed(2) ?? "--"}s
-        </div>
-      </div>
-
-      {/* 倍速 */}
-      <div style={{ marginTop: 12 }}>
-        <strong>Speed:</strong>{" "}
-        {[0.5, 0.75, 1, 1.25, 1.5].map((r) => (
-          <button key={r} onClick={() => setPlaybackRate(r)} style={{ marginRight: 6 }}>
-            {r}x
-          </button>
-        ))}
-      </div>
-
-      {/* 录音 */}
-      <div style={{ marginTop: 16 }}>
-        <strong>Recording:</strong><br />
-        {!isRecording ? (
-          <button onClick={startRecording}>Start Recording</button>
-        ) : (
-          <button onClick={stopRecording}>Stop Recording</button>
-        )}
-        {recordedAudio && (
-          <div style={{ marginTop: 8 }}>
-            <audio src={recordedAudio} controls />
+        {recordingError && (
+          <div className={styles.toast} onClick={clearRecordingError}>
+            {recordingError}（点击关闭）
           </div>
         )}
       </div>

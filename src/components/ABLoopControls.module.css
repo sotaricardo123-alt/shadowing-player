@@ -1,0 +1,13 @@
+.section {
+  margin-top: 16px;
+}
+
+.buttons button + button {
+  margin-left: 6px;
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin-top: 6px;
+}

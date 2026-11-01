@@ -1,0 +1,13 @@
+.section {
+  margin-top: 16px;
+}
+
+.buttons button {
+  margin-right: 6px;
+}
+
+.buttons button.active {
+  border-color: var(--color-primary);
+  background: var(--color-active);
+  color: var(--color-primary-hover);
+}

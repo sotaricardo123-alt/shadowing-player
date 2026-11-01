@@ -1,0 +1,17 @@
+.panel {
+  position: absolute;
+  top: 24px;
+  right: 20px;
+  z-index: 10;
+}
+
+.popup {
+  margin-top: 6px;
+  padding: 10px 12px;
+  font-size: 0.75rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  line-height: 1.6;
+}
